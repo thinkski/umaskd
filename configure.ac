@@ -2,8 +2,8 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.59])
-AC_INIT([umaskd], [1.0], [chiszp@gmail.com])
-AM_INIT_AUTOMAKE([1.10 no-define])
+AC_INIT([umaskd], [0.1], [chiszp@gmail.com])
+AM_INIT_AUTOMAKE([1.9 no-define])
 AC_CONFIG_SRCDIR([src/main.cc])
 AC_CONFIG_HEADERS([config.h])
 
@@ -11,7 +11,6 @@ AC_CONFIG_HEADERS([config.h])
 AC_PROG_CXX
 AC_PROG_AWK
 AC_PROG_INSTALL
-AC_PROG_MKDIR_P
 
 # Checks for libraries.
 
@@ -22,7 +21,6 @@ AC_CHECK_HEADERS([sys/inotify.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_PID_T
-AC_TYPE_SSIZE_T
 
 # Checks for library functions.
 AC_FUNC_FORK

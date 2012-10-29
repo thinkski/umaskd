@@ -1,8 +1,12 @@
-/// @file
-/// @author Chris Hiszpanski <chiszp@gmail.com>
-///
-/// @section DESCRIPTION
-/// Main loop and user interface.
+/**
+ * @file
+ * @author Chris Hiszpanski <chiszp@gmail.com>
+ *
+ * @section LICENSE
+ *
+ * @section DESCRIPTION
+ * Main loop and user interface.
+ */
 
 #include <getopt.h>
 #include <limits.h>
@@ -25,9 +29,20 @@
 #endif
 
 
-///
-/// Prints usage statement to standard output and exits successfully.
-///
+/**
+ * Check whether user is already running process instance.
+ *
+ * @return True if instance already running, false otherwise.
+ */
+static bool is_running(void)
+{
+    // Get user id
+    uid_t uid = getuid();
+}
+
+/**
+ * Prints usage statement to standard output and exits successfully.
+ */
 static void help(void)
 {
     printf("Utility for maintaining separate per-directory umasks\n");
@@ -39,17 +54,18 @@ static void help(void)
     printf("  -f, --file=filename  Load configuration from specific file.\n");
     printf("  -h, --help           Prints this message.\n");
     printf("  -v, --version        Prints version information.\n");
+    printf("  -V, --verbose        Prints informational messages.\n");
     printf("\n");
     printf("Report bugs to: Chris Hiszpanski <chiszp@gmail.com>\n");
     exit(0);
 }
 
-///
-/// Prints version to standard output and exits successfully.
-///
+/**
+ * Prints version to standard output and exits successfully.
+ */
 static void version(void)
 {
-    printf("umaskd 1.0\n");
+    printf("umaskd 0.1\n");
     printf("Copyright (C) 2012 Chris Hiszpanski\n");
     printf("License GPLv3+: GNU GPL version 3 or later ");
         printf("<http://gnu.org/licenses/gpl.html>\n");
@@ -59,14 +75,15 @@ static void version(void)
     exit(0);
 }
 
-///
-/// Main loop
-///
+/**
+ * Main loop
+ */
 int main(int argc, char **argv)
 {
     // Set defaults
     const char *cfgfile = SYSCONFDIR "/umaskd.conf";
     int daemon = 0;
+    int verbose = 0;
 
     // Parse command-line arguments
     while (1) {
@@ -79,6 +96,7 @@ int main(int argc, char **argv)
             {"file",    1, 0, 'f'},
             {"help",    0, 0, 'h'},
             {"version", 0, 0, 'v'},
+            {"verbose", 0, 0, 'V'},
             {NULL,      0, 0,  0 }
         };
 
@@ -100,6 +118,9 @@ int main(int argc, char **argv)
             case 'v':
                 version();
                 break;
+            case 'V':
+                verbose = 1;
+                break;
             case '?':
             default:
                 break;
@@ -107,45 +128,54 @@ int main(int argc, char **argv)
     }
 
     // Instantiate notification subsystem abstraction
-    //Notify *notify = new Notify();
     Notify notify;
 
-    /* Parse configuration file.
-     * Format is one directory per line. */
+    // Set verbosity
+    notify.set_verbose(verbose);
+
+    // Parse configuration file.
+    // Format is one directory per line.
     FILE *fp = fopen(cfgfile, "r");
     char *path = NULL;
-    unsigned int perm = 0;
-    /* Open configuration file for reading */
+    unsigned int ormask = 0;
+    unsigned int andmask = 0;
+    // Open configuration file for reading
     if (!fp) {
-        fprintf(stderr, "error: cannot open configuration file. exiting.\n");
+        fprintf(stderr, "error: cannot open configuration file %s. exiting.\n", cfgfile);
         exit(1);
     }
-    /* Allocate memory for path string */
+    // Allocate memory for path string
     path = (char *)malloc(PATH_MAX);
     if (!path) {
         fprintf(stderr, "error: cannot allocate memory. exiting.\n");
         exit(1);
     }
-    /* Construct safe format string for fscanf. Auto-allocates. */
+    // Construct safe format string for fscanf. Auto-allocates.
     char *fmt = NULL;
-    if (asprintf(&fmt, "%%4o%%%us", PATH_MAX) < 0) {
+    if (asprintf(&fmt, "%%4o%%4o%%%us", PATH_MAX) < 0) {
         perror("asprintf");
         exit(1);
     }
-    /* Read each line of configuration file */
+    // Read each line of configuration file
     ssize_t nread;
     size_t n = 0;
     char *line = NULL;
     while ((nread = getline(&line, &n, fp)) != -1) {
 
-        /* Replace comment '#' with a null terminator */
+        // Skip pure comment lines
+        if (line[0] == '#') {
+            continue;
+        }
+
+        // Replace comment '#' with a null terminator
         char *tmp = strchr(line, '#');
         if (tmp) {
             *tmp = '\0';
         }
 
-        /* Read line, skipping it if not in correct format */
-        if (sscanf(line, fmt, &perm, path) != 2) {
+        // Read line, skipping it if not in correct format
+        if (sscanf(line, fmt, &ormask, &andmask, path) != 3) {
+            fprintf(stderr, "error: skipping malformed line: %s\n", line);
             free(line);
             line = NULL;
             continue;
@@ -154,43 +184,48 @@ int main(int argc, char **argv)
         line = NULL;
 
         // Add path to notification queue
-        notify.add_path(path, perm);
+        notify.add_path(path, ormask, andmask);
+        if (verbose) {
+            fprintf(stderr,
+                    "info: added %s with minimum %04o and maximum %04o\n",
+                    path, ormask, andmask);
+        }
     }
-    /* Free memory, close file */
+    // Free memory, close file
     free(fmt);
     free(path);
     fclose(fp);
 
-    /* Run as daemon, if directed to do so */
+    // Run as daemon, if directed to do so
     if (daemon) {
         pid_t session_id = 0;
         pid_t process_id = 0;
 
-        /* Fork a child process */
+        // Fork a child process
         process_id = fork();
         if (process_id < 0) {
             fprintf(stderr, "error: cannot fork daemon process. exiting.\n");
             exit(1);
         }
 
-        /* Kill the parent process */
+        // Kill the parent process
         if (process_id > 0) {
             exit(0);
         }
 
-        /* Unmask the file mode */
+        // Unmask the file mode
         umask(0);
 
-        /* Set new session */
+        // Set new session
         session_id = setsid();
         if (session_id < 0) {
             exit(1);
         }
 
-        /* Change current working directory to root */
+        // Change current working directory to root
         chdir("/");
 
-        /* Close stdin, stdout, and stderr */
+        // Close stdin, stdout, and stderr
         close(STDIN_FILENO);
         close(STDOUT_FILENO);
         close(STDERR_FILENO);

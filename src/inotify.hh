@@ -34,8 +34,12 @@ class Notify {
         // File descriptor of inotify instance
         int fd_;
 
+        // Verbosity flag
+        bool verbose_;
+
         // Maps watch descriptor to umask
-        std::map <int, unsigned short> mask_;
+        std::map <int, unsigned short> andmask_;
+        std::map <int, unsigned short> ormask_;
 
         // Maps watch descriptor to path
         std::map <int, std::string> path_;
@@ -53,26 +57,35 @@ class Notify {
 
             // Initialize inotify instance
             fd_ = inotify_init();
+
+            // By default, verbosity disabled
+            verbose_ = false;
         }
 
         ///
         /// Add path to watchlist
         ///
-        /// @param Path to watch, as a string (no trailing slash).
-        /// @param User file-creation mask, in octal.
+        /// @param path Path to watch, as a string (no trailing slash).
+        /// @param ormask User file-creation minimum mask, in octal.
+        /// @param andmask User file-creation maximum mask, in octal.
         ///
         /// @return 0 on success, -1 on error.
         ///
-        int add_path(const char *path, unsigned short umask) {
+        int add_path(const char *path,
+                     unsigned short ormask,
+                     unsigned short andmask)
+        {
             // Add path to watchlist of our inotify instance
-            int wd = inotify_add_watch(fd_, path, IN_ONLYDIR | IN_CREATE);
+            int wd = inotify_add_watch(fd_, path,
+                IN_ONLYDIR | IN_CREATE | IN_MOVED_TO);
             if (wd < 0) {
                 perror("inotify_add_watch");
                 return -1;
             }
 
             // Add mask to key-value table
-            mask_.insert(std::pair<int, unsigned short>(wd, umask));
+            andmask_.insert(std::pair<int, unsigned short>(wd, andmask));
+            ormask_.insert(std::pair<int, unsigned short>(wd, ormask));
 
             // Add path to key-value table
             path_.insert(std::pair<int, std::string>(wd, std::string(path)));
@@ -93,30 +106,48 @@ class Notify {
                 }
 
                 // Process all events
-                int i = 0;
-                while (i < n) {
+                struct inotify_event *event;
+                for (int i = 0; i < n; i += EVENT_SIZE + event->len) {
                     // Get event pointer
-                    struct inotify_event *event =
-                        (struct inotify_event *) &event_buf_[i];
+                    event = (struct inotify_event *) &event_buf_[i];
+
+                    // Informational message
+                    if (verbose_) {
+                        fprintf(stderr, "info: event %s\n", event->name);
+                    }
 
                     // Change working directory to path
                     if (chdir(path_[event->wd].c_str()) < 0) {
                         perror("chdir");
-                    // Get current permissions. On error, skip this event.
-                    } else if (lstat(event->name, st_buf_) < 0) {
-                        perror("lstat");
-                    // Change permissions
-                    } else if (chmod(event->name,
-                            st_buf_->st_mode & ~mask_[event->wd]) < 0) {
-                        perror("chmod");
+                        continue;
                     }
-
-                    // Increment offset to next event
-                    i += EVENT_SIZE + event->len;
+                    // Get current permissions. On error, skip this event.
+                    if (stat(event->name, st_buf_) < 0) {
+                        perror("lstat");
+                        continue;
+                    }
+                    // Mask permissions
+                    if (chmod(event->name,
+                              st_buf_->st_mode |
+                              ~ormask_[event->wd] &
+                              ~andmask_[event->wd] &
+                              0777) < 0) {
+                        perror("chmod");
+                        continue;
+                    }
                 }
             }
 
             // Free memory. Should never get here.
+        }
+
+        ///
+        /// Sets verbosity
+        ///
+        /// @param verbose If true, information messages will be printed.
+        ///
+        void set_verbose(bool verbose) {
+            verbose_ = verbose;
         }
 
         ///
