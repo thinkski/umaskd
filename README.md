@@ -1,19 +1,15 @@
-# umaskd v1.0
+# umaskd
 
-__umaskd__ is an event-driven (uses inotify) utility which implements
-per-directory umasks. Although the shell has priority over a file's umask,
-this daemon can be used to specify minimum and maximum permission sets on
-each new file in a particular directory.
+__umaskd__ is an event-driven (uses inotify) daemon which enforces per-directory permissions. Although the shell has priority over a file's permissions via `umask`, this daemon can be used to specify minimum and maximum permissions on each new file in a particular directory.
 
-For example, say you're on a large shared system and hence set your default
-umask to 0077. However, you would like any files transferred via scp to your
-public_html/ subdirectory to have a umask of 0022. This is where umaskd can
-help. Via a configuration file, you specify a minimum permission mask as well
-as a maximum permission mask for a particular directory, such as public_html/.
+This is useful in several cases:
 
-A minimum as well as a maximum are required since the shell first applies its
-umask, and you may want a particular directory's mask to be more or less
-restrictive than this default.
+1. You regularly `scp` files into `~/public_html`, only to discover that web visitors receive a `403 Forbidden` error as the permissions are incorrect. __umaskd__ can monitor `~/public_html` for new files and set the permissions to be at least 0444 (i.e. readable by everyone).
+
+2. You regularly transfer files over NFS or other mechanism to your home directory, but would like to keep them private. In this case, __umask__ can ensure that the permissions are no more than 0770 (i.e. read/write/execute by user and group, but no permissions for others).
+
+Furthermore, you can combine these cases, creating a private home directory with a public subdirectory.
+
 
 ## Configuration File
 
