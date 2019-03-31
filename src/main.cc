@@ -65,8 +65,8 @@ static void help(void)
  */
 static void version(void)
 {
-    printf("umaskd 0.1\n");
-    printf("Copyright (C) 2012 Chris Hiszpanski\n");
+    printf("umaskd 0.1.1\n");
+    printf("Copyright (C) 2012-2019 Chris Hiszpanski\n");
     printf("License GPLv3+: GNU GPL version 3 or later ");
         printf("<http://gnu.org/licenses/gpl.html>\n");
     printf("This is free software: you are free to change and ");
@@ -152,7 +152,7 @@ int main(int argc, char **argv)
     }
     // Construct safe format string for fscanf. Auto-allocates.
     char *fmt = NULL;
-    if (asprintf(&fmt, "%%4o%%4o%%%us", PATH_MAX) < 0) {
+    if (asprintf(&fmt, "%%04o%%04o%%%us", PATH_MAX) < 0) {
         perror("asprintf");
         exit(1);
     }
@@ -223,7 +223,14 @@ int main(int argc, char **argv)
         }
 
         // Change current working directory to root
-        chdir("/");
+        if (chdir("/") < 0) {
+			fprintf(
+				stderr,
+				"error: cannot change directory (%s). exiting.\n",
+				strerror(errno)
+			);
+			exit(1);
+		}
 
         // Close stdin, stdout, and stderr
         close(STDIN_FILENO);

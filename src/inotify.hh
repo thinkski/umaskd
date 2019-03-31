@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <set>
 #include <string>
 
 // POSIX
@@ -43,6 +44,11 @@ class Notify {
 
         // Maps watch descriptor to path
         std::map <int, std::string> path_;
+
+        // Set of watch descriptor to temporarily ignore. As we're watching
+        // for attribute changes, but making attribute changes, cause
+        // infinite loop otherwise.
+        std::set <std::string> ignore_;
 
     public:
         ///
@@ -77,7 +83,7 @@ class Notify {
         {
             // Add path to watchlist of our inotify instance
             int wd = inotify_add_watch(fd_, path,
-                IN_ONLYDIR | IN_CREATE | IN_MOVED_TO);
+                IN_ONLYDIR | IN_CREATE | IN_MOVED_TO | IN_ATTRIB);
             if (wd < 0) {
                 perror("inotify_add_watch");
                 return -1;
@@ -111,29 +117,37 @@ class Notify {
                     // Get event pointer
                     event = (struct inotify_event *) &event_buf_[i];
 
-                    // Informational message
-                    if (verbose_) {
-                        fprintf(stderr, "info: event %s\n", event->name);
-                    }
+                    // If in ignore set, remove and continue
+                    if (ignore_.erase(event->name) > 0) {
+                    	continue;
+					}
 
                     // Change working directory to path
                     if (chdir(path_[event->wd].c_str()) < 0) {
                         perror("chdir");
                         continue;
                     }
+
                     // Get current permissions. On error, skip this event.
                     if (stat(event->name, st_buf_) < 0) {
                         perror("lstat");
                         continue;
                     }
+
                     // Mask permissions
-                    if (chmod(event->name,
-                              st_buf_->st_mode |
-                              ~ormask_[event->wd] &
-                              ~andmask_[event->wd] &
-                              0777) < 0) {
+                    mode_t mode = (
+                    	st_buf_->st_mode | (~ormask_[event->wd] & 0777)
+					) & (~andmask_[event->wd]);
+                    ignore_.insert(event->name);
+                    if (chmod(event->name, mode) < 0) {
                         perror("chmod");
                         continue;
+                    }
+                    // Informational message
+                    if (verbose_) {
+                        fprintf(stderr, "info: chmod %04o %s\n",
+							mode, event->name
+                        );
                     }
                 }
             }
