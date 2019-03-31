@@ -1,0 +1,6 @@
+2019-03-30  Chris Hiszpanski  <chris@hiszpanski.name>
+
+	* src/main.cc: checked chdir() return to fix compiler warning
+
+	* configure.ac: use foreign automate build to remove need for
+	typical automake files (README, INSTALL, COPYING, etc.)

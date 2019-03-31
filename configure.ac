@@ -2,8 +2,8 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.59])
-AC_INIT([umaskd], [0.1], [chiszp@gmail.com])
-AM_INIT_AUTOMAKE([1.9 no-define])
+AC_INIT([umaskd], [0.1.1], [chris@hiszpanski.name])
+AM_INIT_AUTOMAKE([1.9 foreign])
 AC_CONFIG_SRCDIR([src/main.cc])
 AC_CONFIG_HEADERS([config.h])
 
